@@ -15,6 +15,7 @@ SHELL ["conda", "run", "-n", "prior-weaver", "/bin/bash", "-c"]
 
 # Copy the rest of the application files
 COPY main.py main.py
+COPY bambi_parser.py bambi_parser.py
 
 # Expose port 8080 for FastAPI (e.g., for Cloud Run)
 EXPOSE 8080
