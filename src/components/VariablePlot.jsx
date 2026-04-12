@@ -10,7 +10,7 @@ import "./VariablePlot.css";
 export default function VariablePlot({ variable }) {
     const { variablesDict } = useContext(VariableContext);
     const { entities, addEntities, updateEntities, getEntitiesCntDifference } = useContext(EntityContext);
-    const { selectedEntities, activeFilter } = useContext(SelectionContext);
+    const { selectedEntities, activeFilter, showCompleteColor } = useContext(SelectionContext);
 
     const svgWidthRef = useRef(0);
     const svgHeightRef = useRef(0);
@@ -20,18 +20,30 @@ export default function VariablePlot({ variable }) {
     const marginBottom = 40;
     const labelOffset = 35;
 
+    const isDragActive = useRef(false);
+    const processedBinsRef = useRef(new Set());
+    const xScaleRef = useRef(null);
+    const yScaleRef = useRef(null);
+    const binInfosRef = useRef([]);
+    const maxYRef = useRef(0);
+
     useEffect(() => {
-        console.log("variable", variable);
         drawPlot();
     }, [variable]);
 
     useEffect(() => {
         drawRoulette();
-    }, [variable, entities, activeFilter]);
+    }, [variable, entities, activeFilter, showCompleteColor]);
 
     useEffect(() => {
         updateHighlightedEntities();
     }, [selectedEntities]);
+
+    useEffect(() => {
+        const handleMouseUp = () => { isDragActive.current = false; };
+        window.addEventListener("mouseup", handleMouseUp);
+        return () => window.removeEventListener("mouseup", handleMouseUp);
+    }, []);
 
     const drawPlot = () => {
         const container = d3.select(`#univariate-container-${variable.name}`);
@@ -47,6 +59,60 @@ export default function VariablePlot({ variable }) {
             .attr("width", svgWidth)
             .attr("height", svgHeight);
     }
+
+    const handleCellInteraction = (bin, grid, isDrag = false) => {
+        const binInfo = binInfosRef.current[bin];
+        if (!binInfo) return;
+        if (grid <= binInfo.completeHeight) return;
+
+        const deltaHeight = grid - binInfo.height;
+        if (deltaHeight > 0) {
+            const binEdges = variable.binEdges;
+            let newEntitiesData = [];
+            for (let i = 0; i < deltaHeight; i++) {
+                newEntitiesData.push({
+                    [variable.name]: Math.random() * (binEdges[bin + 1] - binEdges[bin]) + binEdges[bin]
+                });
+            }
+            const addType = deltaHeight === 1 ? "single" : "multiple";
+            addEntities(newEntitiesData, "univariate", addType);
+        } else {
+            const individualEntities = binInfo.entities.filter(e =>
+                Object.entries(e).filter(([key, value]) => key !== "id" && value !== null).length === 1
+            );
+            if (individualEntities.length === 0) {
+                if (!isDrag) alert('No individual entities can be removed. Please remove entities in the parallel coordinates plot.');
+                return;
+            }
+
+            let updatedEntities = individualEntities.slice(grid);
+            if (deltaHeight === 0) {
+                updatedEntities = individualEntities.slice(-1);
+            }
+
+            const updateType = deltaHeight === 0 ? "single" : "multiple";
+            updateEntities(
+                updatedEntities.map(entity => entity.id),
+                updatedEntities.map(entity => {
+                    let wouldBeAllNull = true;
+                    for (let key in entity) {
+                        if (key !== 'id' && key !== variable.name && entity[key] !== null) {
+                            wouldBeAllNull = false;
+                            break;
+                        }
+                    }
+                    if (wouldBeAllNull) {
+                        const nullData = {};
+                        Object.keys(entity).forEach(key => { if (key !== 'id') nullData[key] = null; });
+                        return nullData;
+                    }
+                    return { [variable.name]: null };
+                }),
+                "univariate",
+                updateType
+            );
+        }
+    };
 
     const drawRoulette = () => {
         console.log("populate entities in univariate plot");
@@ -103,6 +169,12 @@ export default function VariablePlot({ variable }) {
             .domain([0, maxY])
             .range([chartHeight, 0]);
 
+        // Store in refs for drag handler access
+        xScaleRef.current = xScale;
+        yScaleRef.current = yScale;
+        binInfosRef.current = binInfos;
+        maxYRef.current = maxY;
+
         // Draw X axis
         chart.append('g')
             .attr('transform', `translate(0, ${chartHeight})`)
@@ -154,7 +226,7 @@ export default function VariablePlot({ variable }) {
 
                 // Display complete entities in a different style to indicate that they are used in the translation process --> representing the final domain knowledge
                 if (grid <= completeHeight) {
-                    cellClass = "filtered-entity-cell";
+                    cellClass = showCompleteColor ? "complete-entity-cell" : "fill-grid-cell";
                 } else if (grid <= completeHeight + incompleteHeight) {
                     cellClass = "fill-grid-cell";
                 }
@@ -169,68 +241,47 @@ export default function VariablePlot({ variable }) {
                     .attr("width", gridWidth)
                     .attr("height", gridHeight)
                     .on("click", function (event, d) {
-                        if (grid <= binInfo.completeHeight) {
-                            return;
-                        }
-                        // Update entities
-                        let deltaHeight = grid - binInfo.height;
-                        // if clicked count is larger than previous, then add new entities (randomly generated in the bin)
-                        if (deltaHeight > 0) {
-                            let newEntitiesData = [];
-                            for (let i = 0; i < deltaHeight; i++) {
-                                newEntitiesData.push({
-                                    [variable.name]: Math.random() * (variable.binEdges[bin + 1] - variable.binEdges[bin]) + variable.binEdges[bin]
-                                });
-                            }
-                            const addType = deltaHeight === 1 ? "single" : "multiple";
-                            addEntities(newEntitiesData, "univariate", addType);
-                        }
-                        // if clicked count is smaller than or equal to previous, then update values of existing entities
-                        else {
-                            const individualEntities = binInfo.entities.filter(e => Object.entries(e).filter(([key, value]) => key !== "id" && value !== null).length === 1);
-                            if (individualEntities.length === 0) {
-                                alert('No individual entities can be removed. Please remove entities in the parallel coordinates plot.');
-                                return;
-                            }
-
-                            let updatedEntities = individualEntities.slice(grid); // remove based on FIFO
-                            if (deltaHeight === 0) {
-                                // remove current entity
-                                updatedEntities = individualEntities.slice(-1);
-                            }
-
-                            const updateType = deltaHeight === 0 ? "single" : "multiple";
-                            updateEntities(
-                                updatedEntities.map(entity => entity.id),
-                                updatedEntities.map(entity => {
-                                    // Check if entity would have all null values after update
-                                    let wouldBeAllNull = true;
-                                    for (let key in entity) {
-                                        if (key !== 'id' && key !== variable.name && entity[key] !== null) {
-                                            wouldBeAllNull = false;
-                                            break;
-                                        }
-                                    }
-
-                                    // If all values would be null, return object with all nulls to trigger deletion
-                                    if (wouldBeAllNull) {
-                                        const nullData = {};
-                                        Object.keys(entity).forEach(key => {
-                                            if (key !== 'id') nullData[key] = null;
-                                        });
-                                        return nullData;
-                                    }
-
-                                    // Otherwise just update the specific variable
-                                    return { [variable.name]: null };
-                                }),
-                                "univariate",
-                                updateType
-                            );
-                        }
+                        handleCellInteraction(bin, grid, false);
                     });
             }
         }
+
+        // Drag-to-sketch: mousedown starts drag and processes the initial cell
+        svg.on("mousedown", function (event) {
+            isDragActive.current = true;
+            processedBinsRef.current = new Set();
+            const [mouseX, mouseY] = d3.pointer(event, chart.node());
+            const binEdges = variable.binEdges;
+            let activeBin = -1;
+            for (let b = 0; b < binEdges.length - 1; b++) {
+                if (mouseX >= xScaleRef.current(binEdges[b]) && mouseX < xScaleRef.current(binEdges[b + 1])) {
+                    activeBin = b;
+                    break;
+                }
+            }
+            if (activeBin < 0) return;
+            const activeGrid = Math.max(1, Math.min(maxYRef.current, Math.ceil(yScaleRef.current.invert(mouseY))));
+            handleCellInteraction(activeBin, activeGrid, true);
+            processedBinsRef.current.add(activeBin);
+        });
+
+        // Drag-to-sketch: mousemove sets each bin's height as cursor passes through
+        svg.on("mousemove", function (event) {
+            if (!isDragActive.current) return;
+            const [mouseX, mouseY] = d3.pointer(event, chart.node());
+            const binEdges = variable.binEdges;
+            let activeBin = -1;
+            for (let b = 0; b < binEdges.length - 1; b++) {
+                if (mouseX >= xScaleRef.current(binEdges[b]) && mouseX < xScaleRef.current(binEdges[b + 1])) {
+                    activeBin = b;
+                    break;
+                }
+            }
+            if (activeBin < 0 || processedBinsRef.current.has(activeBin)) return;
+            const activeGrid = Math.max(1, Math.min(maxYRef.current, Math.ceil(yScaleRef.current.invert(mouseY))));
+            handleCellInteraction(activeBin, activeGrid, true);
+            processedBinsRef.current.add(activeBin);
+        });
     }
 
     const updateHighlightedEntities = () => {
@@ -259,7 +310,7 @@ export default function VariablePlot({ variable }) {
             while (count > 0) {
                 let cell = chart.select(`#${variable.name}-${bin}-${grid}`);
                 // if in the incomplete mode, than skip the complete filled grid
-                if (activeFilter === FILTER_TYPES.INCOMPLETE && cell.classed("filtered-entity-cell")) {
+                if (activeFilter === FILTER_TYPES.INCOMPLETE && cell.classed("complete-entity-cell")) {
                     grid++;
                     continue;
                 }

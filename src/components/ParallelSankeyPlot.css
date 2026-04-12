@@ -1,3 +1,7 @@
+#plot-container svg {
+    user-select: none;
+}
+
 /* Entity dots */
 .entity-dot {
     fill: white;

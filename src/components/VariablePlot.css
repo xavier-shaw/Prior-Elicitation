@@ -1,3 +1,7 @@
+[id^="univariate-svg-"] {
+    user-select: none;
+}
+
 .fill-grid-cell {
     fill: #ccc;
     stroke: black;
@@ -18,9 +22,8 @@
     fill: steelblue !important;
 }
 
-.filtered-entity-cell {
-    /* fill: rgb(151, 205, 244); */
-    fill: #ccc;
+.complete-entity-cell {
+    fill: lightblue;
     stroke: black;
     stroke-width: 1;
 }

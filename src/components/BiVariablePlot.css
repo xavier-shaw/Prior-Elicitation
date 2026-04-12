@@ -1,3 +1,7 @@
+[id^="bivariate-svg-"] {
+    user-select: none;
+}
+
 .bivar-dot {
     fill: white;
     stroke: black;

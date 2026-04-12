@@ -14,12 +14,12 @@ import { SelectionContext, FILTER_TYPES } from '../contexts/SelectionContext';
 import { ParameterPlot } from '../components/ParameterPlot';
 import NavBar from '../components/NavBar';
 import Joyride, { CallBackProps, ACTIONS, EVENTS, STATUS, ORIGIN } from 'react-joyride';
-import { Help } from '@mui/icons-material';
+import { Visibility } from '@mui/icons-material';
 
 export default function Workspace() {
     const { space, feedback, finishParseModel, leftPanelOpen, setLeftPanelOpen, rightPanelOpen, setRightPanelOpen, tutorial, tutorialSteps, runTutorial, setRunTutorial } = useContext(WorkspaceContext);
     const { variablesDict, parametersDict, biVariablesPairs } = useContext(VariableContext);
-    const { setActiveFilter } = useContext(SelectionContext);
+    const { setActiveFilter, showCompleteColor, setShowCompleteColor } = useContext(SelectionContext);
 
     const [stepIndex, setStepIndex] = useState(0);
 
@@ -83,26 +83,10 @@ export default function Workspace() {
                                         <Box className="component-container univariate-container">
                                             <Box sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }}>
                                                 <Typography variant="h6" gutterBottom>Univariate Histogram</Typography>
-                                                {/* <Tooltip
-                                                    title={
-                                                        <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                                            <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{UI_CLIPS.univariate.description}</Typography>
-                                                            <iframe
-                                                                className='video-container'
-                                                                src={UI_CLIPS.univariate.url}
-                                                                allow="autoplay; loop; muted"
-                                                                allowFullScreen
-                                                            />
-                                                        </Box>
-                                                    }
-                                                    arrow
-                                                    placement="right"
-                                                    PopperProps={{
-                                                        sx: { maxWidth: 1000, minWidth: 500, zIndex: 150000 }
-                                                    }}
-                                                >
-                                                    <Help size="small" />
-                                                </Tooltip> */}
+                                                {/* View the complete and incomplete entries in the histogram */}
+                                                {/* <IconButton onClick={() => setShowCompleteColor(!showCompleteColor)} size="small" color={showCompleteColor ? 'primary' : 'default'}>
+                                                    <Visibility />
+                                                </IconButton> */}
                                             </Box>
                                             <Box sx={{
                                                 boxSizing: 'border-box',
@@ -138,26 +122,6 @@ export default function Workspace() {
                                         <Box className="component-container bivariate-container">
                                             <Box sx={{ display: 'flex', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 1 }}>
                                                 <Typography variant="h6" gutterBottom>Bivariate Scatterplot</Typography>
-                                                {/* <Tooltip
-                                                    title={
-                                                        <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                                            <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{UI_CLIPS.bivariate.description}</Typography>
-                                                            <iframe
-                                                                className='video-container'
-                                                                src={UI_CLIPS.bivariate.url}
-                                                                allow="autoplay; loop; muted"
-                                                                allowFullScreen
-                                                            />
-                                                        </Box>
-                                                    }
-                                                    arrow
-                                                    placement="right"
-                                                    PopperProps={{
-                                                        sx: { maxWidth: 1000, minWidth: 500, zIndex: 150000 }
-                                                    }}
-                                                >
-                                                    <Help size="small" />
-                                                </Tooltip> */}
                                             </Box>
                                             <Box sx={{
                                                 boxSizing: 'border-box',

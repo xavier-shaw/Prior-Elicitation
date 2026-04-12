@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, forwardRef, useContext } from 'react';
 import * as d3 from 'd3';
 import axios from "axios";
-import { Alert, Box, Button, Checkbox, FormControl, FormControlLabel, FormLabel, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Radio, RadioGroup, Snackbar, Switch, ToggleButton, Typography, Tooltip, Input, InputLabel, TextField } from '@mui/material';
+import { Alert, Box, Button, Checkbox, FormControl, FormControlLabel, FormLabel, IconButton, List, ListItem, ListItemButton, ListItemIcon, ListItemText, Snackbar, Switch, ToggleButton, Typography, Tooltip, Input, InputLabel, TextField } from '@mui/material';
 import DragHandleIcon from '@mui/icons-material/DragHandle';
 import { DndContext, closestCenter, DragOverlay, useSensors, useSensor, PointerSensor } from '@dnd-kit/core';
 import { arrayMove, SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -12,7 +12,8 @@ import { WorkspaceContext, UI_CLIPS } from '../contexts/WorkspaceContext';
 import { VariableContext } from '../contexts/VariableContext';
 import { EntityContext } from '../contexts/EntityContext';
 import { SelectionContext, SELECTION_SOURCES, SELECTION_TYPE } from '../contexts/SelectionContext';
-import { Help } from '@mui/icons-material';
+import { Help, Link, AutoAwesome, Delete } from '@mui/icons-material';
+import { styled } from '@mui/material/styles';
 
 /**
  * Define interaction types
@@ -25,6 +26,40 @@ const FILTER_TYPES = {
     COMPLETE: "complete",
     INCOMPLETE: "incomplete"
 }
+
+const visibilityIconSvg = (color) =>
+    `url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 24 24"><path fill="${encodeURIComponent(color)}" d="M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>')`;
+
+const FilterSwitch = styled(Switch)(({ theme }) => ({
+    '& .MuiSwitch-switchBase': {
+        color: theme.palette.primary.main,
+        '&.Mui-checked': {
+            color: theme.palette.primary.main,
+        },
+        '&.Mui-checked + .MuiSwitch-track': {
+            backgroundColor: theme.palette.primary.main,
+            opacity: 0.5,
+        },
+    },
+    '& .MuiSwitch-track': {
+        backgroundColor: theme.palette.primary.main,
+        opacity: 0.5,
+    },
+    '& .MuiSwitch-thumb': {
+        position: 'relative',
+        '&::before': {
+            content: "''",
+            position: 'absolute',
+            width: '100%',
+            height: '100%',
+            left: 0,
+            top: 0,
+            backgroundRepeat: 'no-repeat',
+            backgroundPosition: 'center',
+            backgroundImage: visibilityIconSvg('#ffffff'),
+        },
+    },
+}));
 
 export default function ParallelSankeyPlot() {
     const { leftPanelOpen, rightPanelOpen } = useContext(WorkspaceContext);
@@ -764,117 +799,78 @@ export default function ParallelSankeyPlot() {
                     borderRadius: 1,
                     p: 1
                 }}>
-                    <Typography sx={{ mr: 1.5 }}>Filter Mode:</Typography>
-                    <RadioGroup
-                        row
-                        aria-label="filterMode"
-                        name="filterMode"
-                        value={activeFilter}
-                        onChange={(event) => changeFilterMode(event.target.value)}
+                    <Typography
+                        className='incomplete-filter-button'
+                        sx={{
+                            mr: 0.5,
+                            fontWeight: activeFilter === FILTER_TYPES.INCOMPLETE ? 'bold' : 'normal',
+                            color: activeFilter === FILTER_TYPES.INCOMPLETE ? 'primary.main' : 'text.secondary'
+                        }}
                     >
-                        <FormControlLabel
-                            className='incomplete-filter-button'
-                            value={FILTER_TYPES.INCOMPLETE}
-                            control={<Radio />}
-                            label="Incomplete"
-                        />
-                        <FormControlLabel
-                            className='complete-filter-button'
-                            value={FILTER_TYPES.COMPLETE}
-                            control={<Radio />}
-                            label="Complete"
-                        />
-                    </RadioGroup>
+                        Incomplete
+                    </Typography>
+                    <FilterSwitch
+                        checked={activeFilter === FILTER_TYPES.COMPLETE}
+                        onChange={(event) => changeFilterMode(event.target.checked ? FILTER_TYPES.COMPLETE : FILTER_TYPES.INCOMPLETE)}
+                    />
+                    <Typography
+                        className='complete-filter-button'
+                        sx={{
+                            ml: 0.5,
+                            fontWeight: activeFilter === FILTER_TYPES.COMPLETE ? 'bold' : 'normal',
+                            color: activeFilter === FILTER_TYPES.COMPLETE ? 'primary.main' : 'text.secondary'
+                        }}
+                    >
+                        Complete
+                    </Typography>
                 </Box>
 
-                <Box className="filter-function-container" sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', mx: 1, gap: 1 }}>
+                <Box className="filter-function-container" sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', mx: 2, gap: 1 }}>
                     {activeFilter === FILTER_TYPES.INCOMPLETE && (
-                        <Box sx={{ mx: 2, display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-                            <Button
-                                size='small'
-                                variant='contained'
-                                disabled={potentialEntities.length === 0}
-                                onClick={handleLink}
-                            >
-                                Connect
-                            </Button>
-                            {/* <Tooltip
-                                title={
-                                    <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                        <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{UI_CLIPS.link.description}</Typography>
-                                        <iframe
-                                            className='video-container'
-                                            src={UI_CLIPS.link.url}
-                                            allow="autoplay; loop; muted"
-                                            allowFullScreen
-                                        />
-                                    </Box>
-                                }
-                                arrow
-                                placement="right"
-                                PopperProps={{
-                                    sx: { maxWidth: 1000, minWidth: 500, zIndex: 150000 }
-                                }}
-                            >
-                                <Help size="small" />
-                            </Tooltip> */}
-                        </Box>
+                        <Button
+                            size='small'
+                            variant='outlined'
+                            color='success'
+                            startIcon={<Link />}
+                            disabled={potentialEntities.length === 0}
+                            onClick={handleLink}
+                        >
+                            Connect
+                        </Button>
                     )}
 
                     {activeFilter === FILTER_TYPES.COMPLETE && (
-                        <Box sx={{ mx: 2, display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-                            <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-                                <Button
-                                    size='small'
-                                    sx={{ mb: 1 }}
-                                    variant='outlined'
-                                    disabled={selectionsRef.current.size === 0}
-                                    onClick={generateRandomEntities}
-                                >
-                                    Generate
-                                </Button>
-                                {/* <Tooltip
-                                    title={
-                                        <Box sx={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 1 }}>
-                                            <Typography variant="body1" sx={{ whiteSpace: 'pre-line' }}>{UI_CLIPS.generate.description}</Typography>
-                                            <iframe
-                                                className='video-container'
-                                                src={UI_CLIPS.generate.url}
-                                                allow="autoplay; loop; muted"
-                                                allowFullScreen
-                                            />
-                                        </Box>
-                                    }
-                                    arrow
-                                    placement="right"
-                                    PopperProps={{
-                                        sx: { maxWidth: 1000, minWidth: 500, zIndex: 150000 }
-                                    }}
-                                >
-                                    <Help size="small" />
-                                </Tooltip> */}
-                            </Box>
-                            <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 1 }}>
-                                <Typography variant="body2">Num: </Typography>
-                                <input
-                                    type="number"
-                                    value={generatedNum}
-                                    onChange={(e) => setGeneratedNum(Number(e.target.value))}
-                                    min="1"
-                                    style={{ maxWidth: '50px', textAlign: 'center' }}
-                                />
-                            </Box>
+                        <Box sx={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 1 }}>
+                            <Button
+                                size='small'
+                                variant='outlined'
+                                startIcon={<AutoAwesome />}
+                                disabled={selectionsRef.current.size === 0}
+                                onClick={generateRandomEntities}
+                            >
+                                Generate
+                            </Button>
+                            <input
+                                type="number"
+                                value={generatedNum}
+                                onChange={(e) => setGeneratedNum(Number(e.target.value))}
+                                min="1"
+                                style={{ maxWidth: '40px', textAlign: 'center' }}
+                            />
                         </Box>
                     )}
-
-                    <Button
-                        size='small'
-                        disabled={selectedEntities.length === 0}
-                        variant='outlined'
-                        onClick={deleteSelected}>
-                        Delete
-                    </Button>
                 </Box>
+
+                <Button
+                    size='small'
+                    variant='outlined'
+                    color='error'
+                    startIcon={<Delete />}
+                    disabled={selectedEntities.length === 0}
+                    onClick={deleteSelected}
+                >
+                    Delete
+                </Button>
             </Box>
 
             <DndContext sensors={sensors} collisionDetection={closestCenter} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>

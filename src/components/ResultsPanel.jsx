@@ -1,4 +1,5 @@
-import { Box, Button, CircularProgress, Snackbar, Alert, Typography, FormControl, FormLabel, FormControlLabel, Checkbox } from '@mui/material';
+import { Box, Button, CircularProgress, Snackbar, Alert, Typography, FormControl, FormLabel, FormControlLabel, Checkbox, Select, MenuItem, IconButton, TextField } from '@mui/material';
+import { Edit } from '@mui/icons-material';
 import React, { useState, useRef, useEffect, useContext, useCallback } from 'react';
 import axios from 'axios';
 import * as d3 from 'd3';
@@ -19,6 +20,8 @@ export default function ResultsPanel() {
 
     const [isTranslating, setIsTranslating] = useState(false);
     const [selectedPriorDistributions, setSelectedPriorDistributions] = useState({});
+    const [editingPriorParam, setEditingPriorParam] = useState(null);
+    const [editingPriorValues, setEditingPriorValues] = useState({});
 
     const svgHeight = 300;
     const margin = { top: 30, bottom: 60, left: 60, right: 20 };
@@ -303,6 +306,87 @@ export default function ResultsPanel() {
             });
     }
 
+    const startEditingPrior = (paramName) => {
+        const param = parametersDict[paramName];
+        const selectedDist = param.distributions[param.selectedDistributionIdx];
+        if (selectedDist) {
+            setEditingPriorParam(paramName);
+            // Store values as strings for easier editing
+            const stringValues = {};
+            Object.entries(selectedDist.params).forEach(([key, value]) => {
+                stringValues[key] = value.toString();
+            });
+            setEditingPriorValues(stringValues);
+        }
+    };
+
+    const cancelEditingPrior = () => {
+        setEditingPriorParam(null);
+        setEditingPriorValues({});
+    };
+
+    const finishEditingPrior = () => {
+        if (!editingPriorParam) return;
+
+        const param = parametersDict[editingPriorParam];
+        const selectedDist = param.distributions[param.selectedDistributionIdx];
+        if (!selectedDist) {
+            cancelEditingPrior();
+            return;
+        }
+
+        // Parse string values back to numbers
+        const parsedParams = {};
+        let hasInvalidValue = false;
+        for (const [key, value] of Object.entries(editingPriorValues)) {
+            const parsed = parseFloat(value);
+            if (isNaN(parsed) || value.trim() === '') {
+                setSnackbarMessage(`Invalid value for ${key}. Please enter a valid number.`);
+                setSnackbarOpen(true);
+                hasInvalidValue = true;
+                break;
+            }
+            parsedParams[key] = parsed;
+        }
+
+        // If validation failed, don't proceed
+        if (hasInvalidValue) {
+            return;
+        }
+
+        // Update the distribution parameters
+        const updatedDist = {
+            ...selectedDist,
+            params: parsedParams
+        };
+
+        // Update the parameter in the context
+        const updatedDistributions = [...param.distributions];
+        updatedDistributions[param.selectedDistributionIdx] = updatedDist;
+        
+        updateParameter(editingPriorParam, {
+            distributions: updatedDistributions
+        });
+
+        // Build updated priors list for predictive check
+        // Use updated distribution for the edited parameter, current for others
+        const nextPriors = Object.entries(parametersDict).map(([pName, p]) => {
+            if (pName === editingPriorParam) {
+                return updatedDist;
+            }
+            return p.distributions?.[p.selectedDistributionIdx];
+        });
+
+        if (nextPriors.some(prior => !prior)) {
+            cancelEditingPrior();
+            return;
+        }
+
+        setIsTranslating(true);
+        predictiveCheck(nextPriors);
+        cancelEditingPrior();
+    };
+
     const checkTranslationDisabled = useCallback(() => {
         if (space === ELICITATION_SPACE.PARAMETER) {
             return Object.values(parametersDict).some(param => param.selectedDistributionIdx === null);
@@ -336,20 +420,111 @@ export default function ResultsPanel() {
                     <Box sx={{ width: '100%' }} id={'predictive-check-div'} />
                     <Box className="prior-result-div" sx={{ my: 2, p: 2 }}>
                         <Typography variant="h6" gutterBottom>Prior Distributions</Typography>
-                        {Object.entries(parametersDict).map(([paramName, param], index) => (
-                            <Box className="prior-result-item" key={paramName} sx={{ p: 1, display: 'flex', flexDirection: 'row', alignItems: 'space-between' }}>
-                                <Typography variant="body1" color="text.primary" sx={{ mr: 1, borderRight: '1px solid #bbb', pr: 1 }}>
-                                    {paramName === "intercept" ?
-                                        <InlineMath math={`\\epsilon`} />
-                                        :
-                                        <InlineMath math={`\\beta_{${index + 1}}`} />
-                                    }
-                                </Typography>
-                                <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
-                                    {getDistributionNotation(param.distributions[param.selectedDistributionIdx])}
-                                </Typography>
-                            </Box>
-                        ))}
+                        {Object.entries(parametersDict).map(([paramName, param], index) => {
+                            const handleDistributionChange = (event) => {
+                                const newIdx = event.target.value;
+                                const nextParameters = {
+                                    ...parametersDict,
+                                    [paramName]: { ...param, selectedDistributionIdx: newIdx }
+                                };
+
+                                updateParameter(paramName, { selectedDistributionIdx: newIdx });
+
+                                const nextPriors = Object.values(nextParameters).map((p) =>
+                                    p.distributions?.[p.selectedDistributionIdx]
+                                );
+
+                                if (nextPriors.some(prior => !prior)) {
+                                    return;
+                                }
+
+                                setIsTranslating(true);
+                                predictiveCheck(nextPriors);
+                            };
+
+                            const selectedDist = param.distributions?.[param.selectedDistributionIdx];
+                            const isEditing = editingPriorParam === paramName;
+
+                            return (
+                                <Box key={paramName} sx={{ mb: 2 }}>
+                                    <Box className="prior-result-item" sx={{ p: 1, display: 'flex', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+                                        <Typography variant="body1" color="text.primary" sx={{ mr: 1, borderRight: '1px solid #bbb', pr: 1 }}>
+                                            {paramName === "intercept" ?
+                                                <InlineMath math={`\\epsilon`} />
+                                                :
+                                                <InlineMath math={`\\beta_{${index + 1}}`} />
+                                            }
+                                        </Typography>
+                                        <FormControl size="small" sx={{ flexGrow: 1 }}>
+                                            <Select
+                                                value={param.selectedDistributionIdx ?? ''}
+                                                displayEmpty
+                                                onChange={handleDistributionChange}
+                                                disabled={isEditing}
+                                            >
+                                                {param.distributions?.map((dist, distIdx) => (
+                                                    <MenuItem key={`${paramName}-${distIdx}`} value={distIdx}>
+                                                        <Typography variant="body2" color="text.secondary" sx={{ fontStyle: 'italic' }}>
+                                                            {getDistributionNotation(dist)}
+                                                        </Typography>
+                                                    </MenuItem>
+                                                ))}
+                                            </Select>
+                                        </FormControl>
+                                        {selectedDist && (
+                                            <IconButton
+                                                size="small"
+                                                onClick={() => isEditing ? cancelEditingPrior() : startEditingPrior(paramName)}
+                                                disabled={param.selectedDistributionIdx === null}
+                                            >
+                                                <Edit fontSize="small" />
+                                            </IconButton>
+                                        )}
+                                    </Box>
+                                    {isEditing && selectedDist && (
+                                        <Box sx={{ mt: 1, p: 2, border: '1px solid #ddd', borderRadius: 1, backgroundColor: '#f9f9f9' }}>
+                                            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                                                Edit Distribution Parameters
+                                            </Typography>
+                                            {Object.entries(editingPriorValues).map(([paramKey, paramValue]) => (
+                                                <TextField
+                                                    key={paramKey}
+                                                    label={paramKey}
+                                                    type="number"
+                                                    size="small"
+                                                    fullWidth
+                                                    sx={{ mb: 1 }}
+                                                    value={paramValue}
+                                                    onChange={(e) => {
+                                                        setEditingPriorValues(prev => ({
+                                                            ...prev,
+                                                            [paramKey]: e.target.value
+                                                        }));
+                                                    }}
+                                                    inputProps={{ step: "any" }}
+                                                />
+                                            ))}
+                                            <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                                                <Button
+                                                    variant="contained"
+                                                    size="small"
+                                                    onClick={finishEditingPrior}
+                                                >
+                                                    Finish
+                                                </Button>
+                                                <Button
+                                                    variant="outlined"
+                                                    size="small"
+                                                    onClick={cancelEditingPrior}
+                                                >
+                                                    Cancel
+                                                </Button>
+                                            </Box>
+                                        </Box>
+                                    )}
+                                </Box>
+                            );
+                        })}
                     </Box>
                 </Box>
             )}

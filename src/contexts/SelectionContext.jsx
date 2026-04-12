@@ -23,6 +23,9 @@ export const SelectionProvider = ({ children }) => {
     const [selectedEntities, setSelectedEntities] = useState([]);
     const [potentialEntities, setPotentialEntities] = useState([]);
 
+    // Show complete color in the variable plot
+    const [showCompleteColor, setShowCompleteColor] = useState(false);
+
     const updateSelections = (newSelections, source) => {
         setSelectionSource(source);
         setSelections(newSelections);
@@ -54,7 +57,9 @@ export const SelectionProvider = ({ children }) => {
         isHidden,
         selectionsRef,
         potentialEntities,
-        setPotentialEntities
+        setPotentialEntities,
+        showCompleteColor,
+        setShowCompleteColor
     }
 
     return (

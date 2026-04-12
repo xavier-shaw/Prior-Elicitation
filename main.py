@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Body, BackgroundTasks
+from fastapi import FastAPI, Body, BackgroundTasks, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
@@ -9,7 +9,6 @@ from enum import Enum
 import json
 
 import numpy as np
-import re
 import scipy.stats as stats
 from fitter import Fitter
 
@@ -22,6 +21,8 @@ from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 from pymongo.server_api import ServerApi
 from bson.json_util import dumps
+
+from bambi_parser import BambiParseError, parse_bambi_model
 
 if os.getenv("K_SERVICE") is None:  # check if running locally
     load_dotenv()
@@ -134,92 +135,20 @@ def update_study_settings(settings: AdminUpdateSettings):
 
 
 # ================================ USER ENDPOINTS =================================
-class StanCodeRequest(BaseModel):
+class BambiCodeRequest(BaseModel):
     code: str
 
 
-@app.post('/getStanCodeInfo')
-def parse_stan_code(request: StanCodeRequest):
-    parsed_res = parse_glm_code(request.code)
+@app.post('/parseBambiModel')
+def parse_bambi_code(request: BambiCodeRequest):
+    try:
+        parsed_res = parse_bambi_model(request.code)
+    except BambiParseError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     return {
         "code_info": parsed_res
     }
-
-
-def parse_glm_code(code):
-    # Define the pattern to match the glm formula and components
-    formula_pattern = r"glm\s*\((.*?)\,\s*"
-    family_pattern = r"family\s*=\s*([a-zA-Z]+)"
-    link_pattern = r"link\s*=\s*\"?([a-zA-Z]+)\"?"
-
-    # Extract the glm formula (inside the glm() function)
-    formula_match = re.search(formula_pattern, code)
-    if not formula_match:
-        raise ValueError("No glm formula found in the code.")
-
-    formula = formula_match.group(1).strip()
-
-    # Parse the response and predictors from the formula
-    formula_parts = formula.split("~")
-    if len(formula_parts) != 2:
-        raise ValueError("Invalid glm formula structure.")
-
-    response = formula_parts[0].strip()
-    predictors = formula_parts[1].strip()
-    predictors = [pred.strip() for pred in predictors.split("+")]
-
-    # Extract family and link function using the patterns
-    family_match = re.search(family_pattern, code)
-    link_match = re.search(link_pattern, code)
-
-    family = family_match.group(1) if family_match else None
-    link = link_match.group(1) if link_match else None
-
-    return {
-        "code": code,
-        "formula": formula,
-        "response": response,
-        "predictors": predictors,
-        "family": family,
-        "link": link
-    }
-
-
-def parse_stan_code(code):
-    block_patterns = {
-        "data": r"data\s*{([^}]*)}",
-        "parameters": r"parameters\s*{([^}]*)}",
-        "model": r"model\s*{([^}]*)}",
-    }
-
-    def parse_block(block):
-        """Parse a block and return detailed information for each variable."""
-        if not block:
-            return []
-        lines = block.strip().split("\n")
-        variables = []
-
-        for line in lines:
-            line = line.strip().replace(";", "")  # Remove semicolons
-            parts = re.split(r"\s+", line)
-            if len(parts) >= 2:
-                var_type = parts[0]  # First part is the type (e.g., real, int)
-                var_name = parts[-1]  # Last part is the variable name
-
-                variables.append({
-                    "name": var_name,
-                    "full_declaration": line
-                })
-
-        return variables
-
-    # Extract and parse each block
-    result = {}
-    for block_name, pattern in block_patterns.items():
-        match = re.search(pattern, code, re.DOTALL)
-        result[block_name] = parse_block(match.group(1)) if match else []
-
-    return result
 
 
 class TranslationData(BaseModel):
@@ -228,6 +157,12 @@ class TranslationData(BaseModel):
     parameters: List[dict]
 
 
+"""
+Translate user-constructed observable dataset into prior distributions for the parameters. The steps are:
+1. Bootstrapping to fit linear model and get parameter samples
+2. Convert parameter samples to distributions
+3. Return the prior distributions
+"""
 @app.post('/translate')
 def translate(data: TranslationData = Body(...)):
     print("translation started")
@@ -240,7 +175,7 @@ def translate(data: TranslationData = Body(...)):
     parameters_dict = {param['relatedVar']: param['name']
                        for param in parameters}
 
-    # Bootstrapping to fit linear model and get parameter samples
+    # Bootstrapping
     parameter_samples = bootstrap_fit_linear_model(
         entities, predictors, response, parameters_dict)
 
@@ -274,10 +209,11 @@ def update_check_results(data: PredictiveCheckData = Body(...)):
     response_var = [var for var in variables if var["type"] == "response"][0]
 
     prior_distributions = [prior for prior in priors]
+    
     # check_results = prior_predictive_check(
     #     predictors, response_var, prior_distributions)
 
-    check_results = new_predictive_check(entities, predictors,
+    check_results = prior_predictive_checking(entities, predictors,
                          response_var, prior_distributions)
 
     return {
@@ -394,7 +330,10 @@ def get_fit_var_pdf(x, fit_name, fit_params):
     return p
 
 
-def new_predictive_check(entities, predictors, response_var, prior_distributions, num_checks=10, num_samples=100):
+"""
+
+"""
+def prior_predictive_checking(entities, predictors, response_var, prior_distributions, num_checks=10, num_samples=100):
     """
     Prior predictive check levels -> determine the type of sampling for the predictor values
     - relational: sample from the user-constrcted dataset
